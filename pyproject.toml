@@ -1,0 +1,36 @@
+[project]
+name = "keelson-sil-gnss"
+version = "0.1.0"
+description = "Simulated GNSS receiver for software-in-the-loop testing: truth in, location_fix out"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = [
+    # PINNED EXACTLY, and this one is a migration pin: it is an alpha cut from
+    # the pull request that adds `keelson.geodesy`, because the model converts
+    # a metre error at the vessel's latitude and there is nowhere else to get
+    # the ellipsoid from. Replace it with the `-pre` the moment one carries
+    # that module. A caret range would also match other pull requests' alphas,
+    # which is why this is `==`.
+    "keelson==0.6.0a245.dev1",
+    "eclipse-zenoh>=1.2.1",
+]
+
+[project.scripts]
+keelson-sil-gnss = "keelson_sil_gnss.main:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["keelson_sil_gnss"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
