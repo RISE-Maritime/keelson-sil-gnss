@@ -136,7 +136,11 @@ class Receiver:
         message.frame_id = f"{self._args.entity_id}/{self._args.source_id}"
         message.latitude = latitude
         message.longitude = longitude
-        self._publisher.put(keelson.enclose(message.SerializeToString()))
+        # Sim time on the envelope too: `enclose` defaults to the wall clock,
+        # which a run on an imported recording's epoch is months away from.
+        self._publisher.put(
+            keelson.enclose(message.SerializeToString(), enclosed_at=fix.timestamp_ns)
+        )
         self.fixes += 1
 
 
