@@ -6,13 +6,15 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
-    # PINNED EXACTLY, and this one is a migration pin: it is an alpha cut from
-    # the pull request that adds `keelson.geodesy`, because the model converts
-    # a metre error at the vessel's latitude and there is nowhere else to get
-    # the ellipsoid from. Replace it with the `-pre` the moment one carries
-    # that module. A caret range would also match other pull requests' alphas,
-    # which is why this is `==`.
-    "keelson==0.6.0a245.dev1",
+    # PINNED EXACTLY to the build Slipway runs, so the two agree on every
+    # payload — its experimental channel, where newer is not always a superset,
+    # so a bump is checked rather than taken. It used to be an alpha carrying
+    # `keelson.geodesy` (keelson#245); that pull request was closed unmerged,
+    # the maintainer's view being that numerical helpers are not the SDK's to
+    # own and a component should depend on pymap3d — which this now does.
+    "keelson==0.6.0.dev9",
+    # The ellipsoid: exact WGS84 ENU <-> geodetic, no required dependencies.
+    "pymap3d>=3.1",
     "eclipse-zenoh>=1.2.1",
 ]
 

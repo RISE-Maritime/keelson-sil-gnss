@@ -61,6 +61,9 @@ class Fix:
     tick: int
     timestamp_ns: int
     enabled: bool
+    #: The fraction of ticks the simulator says the receiver gets a fix out on
+    #: (Slipway's `set_gnss_duty`). 1.0 is healthy.
+    duty: float = 1.0
 
 
 class VesselTruthRecord:
@@ -108,6 +111,7 @@ class VesselTruthRecord:
                 tick=int(record["tick"]),
                 timestamp_ns=timestamp_ns,
                 enabled=bool(record.get("gnss_enabled", True)),
+                duty=float(record.get("gnss_duty", 1.0)),
             )
         except (KeyError, TypeError, ValueError):
             return None

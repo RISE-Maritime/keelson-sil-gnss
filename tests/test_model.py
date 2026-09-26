@@ -11,10 +11,10 @@ from __future__ import annotations
 import math
 import statistics
 
+import pymap3d
 import pytest
-from keelson.geodesy import TangentPlane
 
-from keelson_sil_gnss.model import GnssConfig, gaussian_pair, observed_lat_lon
+from keelson_sil_gnss.model import GnssConfig, gaussian_pair, observed_lat_lon, reports_fix
 
 NOISY = GnssConfig(sigma_m=3.0)
 # Gothenburg. Latitude matters: the metre to degree conversion is done at the
@@ -23,6 +23,12 @@ LAT, LON = 57.68, 11.83
 
 
 # --- the derivation rule ---------------------------------------------------
+
+
+def enu(lat: float, lon: float, lat0: float, lon0: float) -> tuple[float, float]:
+    """East and north metres of `(lat, lon)` from `(lat0, lon0)`, on WGS84."""
+    east, north, _ = pymap3d.geodetic2enu(lat, lon, 0.0, lat0, lon0, 0.0)
+    return float(east), float(north)
 
 
 def test_the_same_coordinate_always_gives_the_same_value():
@@ -113,10 +119,7 @@ def test_a_receiver_with_no_declared_error_reports_truth_exactly():
 def test_noise_moves_the_reported_position_but_not_by_much():
     lat, lon = observed_lat_lon("a", LAT, LON, NOISY, 42, 7)
     assert (lat, lon) != (LAT, LON)
-    plane = TangentPlane.at(LAT, LON)
-    metres = math.dist(
-        ((lon - LON) * plane.m_per_deg_lon, (lat - LAT) * plane.m_per_deg_lat), (0.0, 0.0)
-    )
+    metres = math.dist(enu(lat, lon, LAT, LON), (0.0, 0.0))
     # Five sigma would mean the scale is wrong, not that the draw was unlucky.
     assert metres < 5 * NOISY.sigma_m
 
@@ -124,12 +127,12 @@ def test_noise_moves_the_reported_position_but_not_by_much():
 def test_the_error_has_the_declared_standard_deviation_in_metres():
     """The conversion is the part that can be silently wrong: a standard
     deviation is a distance, and degrees are not."""
-    plane = TangentPlane.at(LAT, LON)
     north, east = [], []
     for tick in range(3000):
         lat, lon = observed_lat_lon("a", LAT, LON, NOISY, 42, tick)
-        north.append((lat - LAT) * plane.m_per_deg_lat)
-        east.append((lon - LON) * plane.m_per_deg_lon)
+        e, n = enu(lat, lon, LAT, LON)
+        north.append(n)
+        east.append(e)
 
     for axis in (north, east):
         assert statistics.fmean(axis) == pytest.approx(0.0, abs=0.3)
@@ -141,11 +144,10 @@ def test_the_error_is_circular_not_stretched_by_latitude():
     shrink towards the poles. At 70 N that is a factor of nearly three, so a
     high-latitude exercise would silently get a different receiver.
     """
-    plane = TangentPlane.at(70.0, 20.0)
     east = []
     for tick in range(2000):
-        _, lon = observed_lat_lon("a", 70.0, 20.0, NOISY, 42, tick)
-        east.append((lon - 20.0) * plane.m_per_deg_lon)
+        lat, lon = observed_lat_lon("a", 70.0, 20.0, NOISY, 42, tick)
+        east.append(enu(lat, lon, 70.0, 20.0)[0])
     assert statistics.stdev(east) == pytest.approx(NOISY.sigma_m, rel=0.06)
 
 
@@ -154,3 +156,24 @@ def test_two_vessels_at_the_same_place_report_different_positions():
     first = observed_lat_lon("slipway-alpha", LAT, LON, NOISY, 42, 7)
     second = observed_lat_lon("slipway-bravo", LAT, LON, NOISY, 42, 7)
     assert first != second
+
+
+# --- losing lock --------------------------------------------------------------
+
+
+def test_a_healthy_receiver_always_reports_and_a_dead_one_never_does():
+    assert all(reports_fix(42, "a", tick, 1.0) for tick in range(500))
+    assert not any(reports_fix(42, "a", tick, 0.0) for tick in range(500))
+
+
+def test_duty_is_the_fraction_of_ticks_that_report():
+    reported = sum(reports_fix(42, "a", tick, 0.3) for tick in range(5000))
+    assert reported / 5000 == pytest.approx(0.3, abs=0.03)
+
+
+def test_losing_lock_does_not_move_the_position_noise():
+    """Its own stream: degrading lock must not shift where the fixes that do
+    get out are reported."""
+    before = [observed_lat_lon("a", LAT, LON, NOISY, 42, t) for t in range(50)]
+    [reports_fix(42, "a", t, 0.5) for t in range(50)]
+    assert [observed_lat_lon("a", LAT, LON, NOISY, 42, t) for t in range(50)] == before

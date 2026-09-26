@@ -86,6 +86,7 @@ uv run ruff check .
 docker build -t keelson-sil-gnss .
 ```
 
-The keelson pin in `pyproject.toml` is currently an **alpha**, cut from the
-pull request that adds `keelson.geodesy`. That is a migration pin: replace it
-with the `-pre` the moment one carries that module.
+The keelson pin in `pyproject.toml` is exact and matches the build Slipway
+runs. The ellipsoid comes from `pymap3d`: keelson#245, which would have put it
+in the SDK, was closed on the view that numerical helpers are not the SDK's to
+own.

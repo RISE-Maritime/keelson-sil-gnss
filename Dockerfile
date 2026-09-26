@@ -3,8 +3,8 @@
 # Plain, and that is the point. Its predecessor lived inside a simulator's
 # repository and had to be built with the parent directory as its context, so
 # it could copy that simulator's kernel package in for one thing — the
-# ellipsoid. The ellipsoid is in the keelson SDK now, so this image is a
-# package and its dependencies and nothing else.
+# ellipsoid. The ellipsoid comes from pymap3d now, so this image is a package
+# and its dependencies and nothing else.
 #
 # keelson installs from PyPI at the version pinned in pyproject.toml — never a
 # local checkout or a hand-built tarball.

@@ -41,7 +41,7 @@ from keelson.scaffolding import declare_liveliness, declare_publisher
 from keelson.scaffolding.cli import add_common_arguments, create_zenoh_config
 from keelson.scaffolding.signals import GracefulShutdown
 
-from .model import GnssConfig, observed_lat_lon
+from .model import GnssConfig, observed_lat_lon, reports_fix
 from .sources import VesselTruthRecord
 
 logger = logging.getLogger("keelson.sil.gnss")
@@ -119,6 +119,12 @@ class Receiver:
         # nothing usable; publishing a stale fix would be the frozen-value lie
         # this project refuses everywhere else.
         if not fix.enabled:
+            self.blind += 1
+            return
+
+        # ...or it is losing lock rather than off, and this tick is one of the
+        # ones it loses. Same silence, counted the same way.
+        if not reports_fix(fix.seed, fix.entity_id, fix.tick, fix.duty):
             self.blind += 1
             return
 

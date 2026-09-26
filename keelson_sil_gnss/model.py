@@ -36,7 +36,7 @@ import hashlib
 import math
 from dataclasses import dataclass
 
-from keelson.geodesy import TangentPlane
+import pymap3d
 
 # 53 bits is the mantissa of a float64, so this maps a 64-bit draw onto the
 # representable reals in [0, 1) without bunching.
@@ -104,20 +104,45 @@ def observed_lat_lon(
     simulator and what goes out as a `location_fix` — this service has no
     tangent plane of its own and needs none.
 
-    The error is drawn in **metres** and converted at the vessel's actual
-    latitude using `keelson.geodesy`. A standard deviation is a distance:
-    applying it to degrees directly would make the east error shrink towards
-    the poles and differ from the north error everywhere. Taking the ellipsoid
-    from the SDK rather than hard-coding metres-per-degree keeps one definition
-    of it in the system — two would agree until someone corrected one of them.
+    The error is drawn in **metres** and placed on the WGS84 ellipsoid by
+    `pymap3d`, in a local east-north-up frame anchored at the true position. A
+    standard deviation is a distance: applying it to degrees directly would make
+    the east error shrink towards the poles and differ from the north error
+    everywhere.
     """
     if not config.is_noisy:
         return latitude_deg, longitude_deg
 
     east_error, north_error = gaussian_pair(seed, f"{entity_id}/gnss", tick)
-    plane = TangentPlane.at(latitude_deg, longitude_deg)
-    sigma = config.sigma_m
-    return (
-        latitude_deg + north_error * sigma / plane.m_per_deg_lat,
-        longitude_deg + east_error * sigma / plane.m_per_deg_lon,
+    return offset_lat_lon(
+        latitude_deg, longitude_deg, east_error * config.sigma_m, north_error * config.sigma_m
     )
+
+
+def offset_lat_lon(
+    latitude_deg: float, longitude_deg: float, east_m: float, north_m: float
+) -> tuple[float, float]:
+    """A position moved by a local east/north offset in metres, on WGS84."""
+    lat, lon, _ = pymap3d.enu2geodetic(east_m, north_m, 0.0, latitude_deg, longitude_deg, 0.0)
+    return float(lat), float(lon)
+
+
+def reports_fix(seed: int, entity_id: str, tick: int, duty: float) -> bool:
+    """Whether the receiver gets a fix out on this tick.
+
+    A receiver losing lock intermittently is not a receiver that is off. `duty`
+    is the fraction of ticks that report — 1.0 is healthy, 0.0 is silence.
+
+    **Its own stream**, so degrading lock does not move the position noise by a
+    millimetre: `observed_lat_lon` draws on `<entity>/gnss`, this on
+    `<entity>/gnss-duty`, and the derivation rule is what makes two streams
+    under one seed independent rather than merely different.
+
+    A drop is a *gap*: nothing is published, no frozen fix and no NaN.
+    """
+    if duty >= 1.0:
+        return True
+    if duty <= 0.0:
+        return False
+    draw, _ = _uniforms(seed, f"{entity_id}/gnss-duty", tick)
+    return draw <= duty
