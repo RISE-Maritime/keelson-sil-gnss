@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-from dataclasses import dataclass
 
 import pymap3d
 
@@ -42,22 +41,6 @@ import pymap3d
 # representable reals in [0, 1) without bunching.
 _MANTISSA = 1 << 53
 _SCALE = 1.0 / _MANTISSA
-
-
-@dataclass(frozen=True)
-class GnssConfig:
-    """What a vessel's GNSS receiver gets wrong.
-
-    `sigma_m` is a standard deviation in metres, applied independently to the
-    east and north components — a circular error, which is the honest first
-    approximation for a receiver with no declared error ellipse.
-    """
-
-    sigma_m: float = 0.0
-
-    @property
-    def is_noisy(self) -> bool:
-        return self.sigma_m > 0.0
 
 
 def _uniforms(seed: int, stream: str, tick: int) -> tuple[float, float]:
@@ -90,35 +73,6 @@ def gaussian_pair(seed: int, stream: str, tick: int) -> tuple[float, float]:
     return radius * math.cos(angle), radius * math.sin(angle)
 
 
-def observed_lat_lon(
-    entity_id: str,
-    latitude_deg: float,
-    longitude_deg: float,
-    config: GnssConfig,
-    seed: int,
-    tick: int,
-) -> tuple[float, float]:
-    """Where the receiver says the vessel is.
-
-    Takes and returns WGS84 degrees, because that is what arrives from a
-    simulator and what goes out as a `location_fix` — this service has no
-    tangent plane of its own and needs none.
-
-    The error is drawn in **metres** and placed on the WGS84 ellipsoid by
-    `pymap3d`, in a local east-north-up frame anchored at the true position. A
-    standard deviation is a distance: applying it to degrees directly would make
-    the east error shrink towards the poles and differ from the north error
-    everywhere.
-    """
-    if not config.is_noisy:
-        return latitude_deg, longitude_deg
-
-    east_error, north_error = gaussian_pair(seed, f"{entity_id}/gnss", tick)
-    return offset_lat_lon(
-        latitude_deg, longitude_deg, east_error * config.sigma_m, north_error * config.sigma_m
-    )
-
-
 def offset_lat_lon(
     latitude_deg: float, longitude_deg: float, east_m: float, north_m: float
 ) -> tuple[float, float]:
@@ -134,7 +88,7 @@ def reports_fix(seed: int, entity_id: str, tick: int, duty: float) -> bool:
     is the fraction of ticks that report — 1.0 is healthy, 0.0 is silence.
 
     **Its own stream**, so degrading lock does not move the position noise by a
-    millimetre: `observed_lat_lon` draws on `<entity>/gnss`, this on
+    millimetre: the per-fix jitter draws on `<entity>/gnss`, this on
     `<entity>/gnss-duty`, and the derivation rule is what makes two streams
     under one seed independent rather than merely different.
 

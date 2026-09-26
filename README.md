@@ -1,21 +1,75 @@
 # keelson-sil-gnss
 
 A simulated GNSS receiver for software-in-the-loop testing. It reads where a
-vessel actually is, decides what a receiver would have reported, and publishes
-that as `location_fix` under its own source id.
+vessel actually is, decides what a receiver of a given grade would have
+reported, and publishes that, and the receiver's own metrics, under its own
+source id.
 
 ```
-truth  ──►  measurement model  ──►  rise/@v0/<entity>/pubsub/location_fix/gnss
+truth  ──►  receiver model  ──►  rise/@v0/<entity>/pubsub/location_fix/gnss
+                                 …/location_fix_satellites_used/gnss, …hdop, …quality, GST
 ```
 
 ```bash
 keelson-sil-gnss --realm rise --entity-id slipway-alpha \
-    --source-id gnss --sigma-m 2.5 --connect tcp/127.0.0.1:7447
+    --source-id gnss --grade professional --connect tcp/127.0.0.1:7447
 ```
 
-One process per fitted device, as on a real platform. `--sigma-m` is the
-standard deviation of the position error in metres, applied independently east
-and north — a property of the hardware, not of the exercise.
+One process per fitted device, as on a real platform.
+
+## Grades
+
+| grade | fix rate | per-axis error (wander / jitter) | wander timescale | solution | satellites in view |
+|---|---|---|---|---|---|
+| `recreational` | 1 Hz | 1.5 m / 0.3 m | ~3 min | SBAS, single frequency | 14–20 |
+| `professional` | 10 Hz | 0.4 m / 0.08 m | ~2 min | DGNSS, dual frequency | 25–35 |
+| `survey` | 10 Hz | 8 mm / 4 mm | ~1 min | RTK fixed (RTK float without corrections) | 25–35 |
+
+The figures are nominal, spec-sheet-class values for each kind of receiver,
+not measurements of a particular unit. `--sigma-m` still describes a receiver
+by its total per-axis error alone, as the grade `custom`.
+
+**The error wanders; it does not jump.** Most of a real receiver's error
+changes over minutes, so consecutive fixes sit close together and the whole
+cloud drifts. Each axis is a correlated part (hashed values at knots, smoothly
+interpolated) plus a small per-fix jitter. Accuracy follows the satellites: HDOP
+grows as fewer are used, and the error grows with it.
+
+## What it publishes
+
+- `location_fix` at the grade's rate, with the receiver's own covariance
+- once a second: `location_fix_satellites_visible`, `…_satellites_used`,
+  `location_fix_quality` (fix type, solution, RTK status, integrity),
+  `location_fix_hdop` / `vdop` / `pdop`, and the GST error statistics
+  (`gnss_error_rms_m`, semi-major/minor axes, latitude/longitude/altitude)
+
+With too few satellites there is no fix and no `location_fix` at all: a gap,
+never a frozen value. The error estimate is what the receiver *believes*; only
+truth knows the actual error, and spoofing does not show in the estimate.
+
+## Live settings
+
+keelson's own `configurable/v1`, served on the receiver's entity under its
+source id: `get_config` answers the current settings and `set_config` merges a
+JSON object. Every applied setting is republished on `configuration_json`, so a
+recording says what was done to the receiver and when.
+
+| key | value | effect |
+|---|---|---|
+| `grade` | `recreational` / `professional` / `survey` | switch the class of receiver |
+| `receiver_on` | bool | off is silence: no fix, no metrics |
+| `lock_duty` | 0–1 | fraction of fixes that get out |
+| `jamming` | 0–1 | satellites drop, error grows, no fix near 1; above 0.5 corrections are lost |
+| `multipath` | 0–1 | extra short-timescale error |
+| `sky_mask` | 0–1 | fraction of the sky blocked; fewer satellites, worse geometry |
+| `corrections` | bool | SBAS/DGNSS → single, RTK fixed → float |
+| `spoofing` | `{offset_m, bearing_deg, drift_mps}` or `null` | fix pulled away while the receiver reports it healthy |
+| `clear` | `true` | every fault off, grade kept |
+
+An unknown key or an out-of-range value is refused, not ignored. Settings take
+effect on the next sample — real time. The noise is still drawn from
+`(seed, instant)`, but when a slider moved is in the `configuration_json`
+trail, not in any seed.
 
 ## Why it is not part of a simulator
 
@@ -39,8 +93,9 @@ Keeping them apart buys two things that matter more than the tidiness:
 
 ## Reproducibility
 
-The service owns no clock and no state. The error at a tick is a pure function
-of `(seed, stream, tick)`, drawn from a hash rather than from a generator, so:
+The measurement owns no clock and no state. The error at an instant is a pure
+function of `(seed, stream, instant)`, drawn from a hash rather than from a
+generator, so:
 
 - two runs of the same scenario produce byte-identical fixes;
 - a run restored from a checkpoint picks up exactly where it left off, without
@@ -73,7 +128,7 @@ rather than the name implying otherwise.
 
 ## Scope
 
-Position only. Heading, course, speed and rate of turn need compass and
+Position and its receiver metrics only. Heading, course, speed and rate of turn need compass and
 rate-gyro models that do not exist here; degrading data no instrument produced
 would be the same fiction this component removes.
 

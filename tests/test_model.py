@@ -14,9 +14,8 @@ import statistics
 import pymap3d
 import pytest
 
-from keelson_sil_gnss.model import GnssConfig, gaussian_pair, observed_lat_lon, reports_fix
+from keelson_sil_gnss.model import gaussian_pair, offset_lat_lon, reports_fix
 
-NOISY = GnssConfig(sigma_m=3.0)
 # Gothenburg. Latitude matters: the metre to degree conversion is done at the
 # vessel's actual position.
 LAT, LON = 57.68, 11.83
@@ -109,55 +108,6 @@ def test_no_draw_is_infinite():
 # --- the GNSS model --------------------------------------------------------
 
 
-def test_a_receiver_with_no_declared_error_reports_truth_exactly():
-    """sigma 0 must be exact, not nearly exact — it is how a test isolates a
-    fault from the noise around it."""
-    quiet = GnssConfig(sigma_m=0.0)
-    assert observed_lat_lon("a", LAT, LON, quiet, 42, 7) == (LAT, LON)
-
-
-def test_noise_moves_the_reported_position_but_not_by_much():
-    lat, lon = observed_lat_lon("a", LAT, LON, NOISY, 42, 7)
-    assert (lat, lon) != (LAT, LON)
-    metres = math.dist(enu(lat, lon, LAT, LON), (0.0, 0.0))
-    # Five sigma would mean the scale is wrong, not that the draw was unlucky.
-    assert metres < 5 * NOISY.sigma_m
-
-
-def test_the_error_has_the_declared_standard_deviation_in_metres():
-    """The conversion is the part that can be silently wrong: a standard
-    deviation is a distance, and degrees are not."""
-    north, east = [], []
-    for tick in range(3000):
-        lat, lon = observed_lat_lon("a", LAT, LON, NOISY, 42, tick)
-        e, n = enu(lat, lon, LAT, LON)
-        north.append(n)
-        east.append(e)
-
-    for axis in (north, east):
-        assert statistics.fmean(axis) == pytest.approx(0.0, abs=0.3)
-        assert statistics.stdev(axis) == pytest.approx(NOISY.sigma_m, rel=0.06)
-
-
-def test_the_error_is_circular_not_stretched_by_latitude():
-    """Applying a metre sigma to degrees directly would make the east error
-    shrink towards the poles. At 70 N that is a factor of nearly three, so a
-    high-latitude exercise would silently get a different receiver.
-    """
-    east = []
-    for tick in range(2000):
-        lat, lon = observed_lat_lon("a", 70.0, 20.0, NOISY, 42, tick)
-        east.append(enu(lat, lon, 70.0, 20.0)[0])
-    assert statistics.stdev(east) == pytest.approx(NOISY.sigma_m, rel=0.06)
-
-
-def test_two_vessels_at_the_same_place_report_different_positions():
-    """Independent receivers, not one error applied to the fleet."""
-    first = observed_lat_lon("slipway-alpha", LAT, LON, NOISY, 42, 7)
-    second = observed_lat_lon("slipway-bravo", LAT, LON, NOISY, 42, 7)
-    assert first != second
-
-
 # --- losing lock --------------------------------------------------------------
 
 
@@ -171,9 +121,22 @@ def test_duty_is_the_fraction_of_ticks_that_report():
     assert reported / 5000 == pytest.approx(0.3, abs=0.03)
 
 
-def test_losing_lock_does_not_move_the_position_noise():
-    """Its own stream: degrading lock must not shift where the fixes that do
-    get out are reported."""
-    before = [observed_lat_lon("a", LAT, LON, NOISY, 42, t) for t in range(50)]
+def test_losing_lock_draws_on_its_own_stream():
+    """Degrading lock must not shift the position jitter, which draws on
+    `<entity>/gnss`: lock draws on `<entity>/gnss-duty`."""
+    before = [gaussian_pair(42, "a/gnss", t) for t in range(50)]
     [reports_fix(42, "a", t, 0.5) for t in range(50)]
-    assert [observed_lat_lon("a", LAT, LON, NOISY, 42, t) for t in range(50)] == before
+    assert [gaussian_pair(42, "a/gnss", t) for t in range(50)] == before
+
+
+# --- the ellipsoid ------------------------------------------------------------
+
+
+def test_an_offset_is_metres_on_the_ground_at_any_latitude():
+    """Applying metres to degrees directly would make the east error shrink
+    towards the poles — at 70 N by a factor of nearly three."""
+    for lat in (0.0, 57.68, 70.0):
+        moved = offset_lat_lon(lat, 20.0, 100.0, -50.0)
+        east, north = enu(*moved, lat, 20.0)
+        assert east == pytest.approx(100.0, abs=1e-6)
+        assert north == pytest.approx(-50.0, abs=1e-6)
