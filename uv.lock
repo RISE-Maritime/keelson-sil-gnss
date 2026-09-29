@@ -38,7 +38,7 @@ wheels = [
 
 [[package]]
 name = "keelson"
-version = "0.6.0.dev19"
+version = "0.6.0.dev20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "eclipse-zenoh" },
@@ -47,7 +47,7 @@ dependencies = [
     { name = "pyyaml" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/4d/ca9e41be10b10bc06e00e548351c263e74a92fab04fb9ccfdf4a368283fa/keelson-0.6.0.dev19-py3-none-any.whl", hash = "sha256:86b2d7f14a9ed69f20b5dadb015944c3b845f2852dc8bc85a64067d9c03bcc15", size = 338909, upload-time = "2026-09-29T07:43:49.643Z" },
+    { url = "https://files.pythonhosted.org/packages/11/11/160c0eac9e615eba4d3c560ad3da0a98d9026956351be934cd8cb33b9a05/keelson-0.6.0.dev20-py3-none-any.whl", hash = "sha256:829bdd537a28e4f0a02fa878811d48e743e0a1f4ea4114f8ad239b9046ec9ca2", size = 338949, upload-time = "2026-09-29T10:45:08.921Z" },
 ]
 
 [[package]]
@@ -69,7 +69,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "eclipse-zenoh", specifier = ">=1.2.1" },
-    { name = "keelson", specifier = "==0.6.0.dev19" },
+    { name = "keelson", specifier = "==0.6.0.dev20" },
     { name = "pymap3d", specifier = ">=3.1" },
 ]
 

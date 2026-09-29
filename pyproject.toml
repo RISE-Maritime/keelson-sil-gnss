@@ -12,7 +12,7 @@ dependencies = [
     # `keelson.geodesy` (keelson#245); that pull request was closed unmerged,
     # the maintainer's view being that numerical helpers are not the SDK's to
     # own and a component should depend on pymap3d — which this now does.
-    "keelson==0.6.0.dev19",
+    "keelson==0.6.0.dev20",
     # The ellipsoid: exact WGS84 ENU <-> geodetic, no required dependencies.
     "pymap3d>=3.1",
     "eclipse-zenoh>=1.2.1",
